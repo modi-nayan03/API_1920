@@ -106,7 +106,7 @@ def admin_appoinment():
         "Reference_image": Reference_image
     }
 
-    appoinment_collection.insert_one(appoinment_data)
+    appointment_collection.insert_one(appoinment_data)
     return jsonify({"message": "Appoinment created successfully"}), 201
 
 
