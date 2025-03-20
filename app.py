@@ -5,6 +5,7 @@ from bson.objectid import ObjectId
 from bson.errors import InvalidId  # Import InvalidId
 from flask_cors import CORS # Import CORS
 from functools import wraps
+import base64
 
 app = Flask(__name__)
 bcrypt = Bcrypt(app)
@@ -78,46 +79,77 @@ def admin_login():
         "message": "Login successful",
         "admin_name": admin["name"]
     }), 200
-
-
 @app.route("/api/admin/appoinment", methods=["POST"])
 def admin_appoinment():
-    data = request.json
-    Client_name = data.get("Client_name")
-    Mobile_no = data.get("Mobile_no")
-    Email_address = data.get("Email_address")
-    Date = data.get("Date")
-    Time_slot = data.get("Time_slot")
-    How_did_you_hear_about_us = data.get("How_did_you_hear_about_us")
-    Message = data.get("Message")
-    Reference_image = data.get("Reference_image")
+    try:
+        Client_name = request.form.get("Client_name")
+        Mobile_no = request.form.get("Mobile_no")
+        Email_address = request.form.get("Email_address")
+        Date = request.form.get("Date")
+        Time_slot = request.form.get("Time_slot")
+        How_did_you_hear_about_us = request.form.get("How_did_you_hear_about_us")
+        Message = request.form.get("Message")
 
-    if not Client_name or not Mobile_no or not Email_address or not Date or not Time_slot or not How_did_you_hear_about_us or not Message or not Reference_image:
-        return jsonify({"message": "All fields are required"}), 400
+        if "Reference_image" not in request.files:
+            return jsonify({"message": "No image file provided"}), 400
 
-    appoinment_data = {
-        "Client_name": Client_name,
-        "Mobile_no": Mobile_no,
-        "Email_address": Email_address,
-        "Date": Date,
-        "Time_slot": Time_slot,
-        "How_did_you_hear_about_us": How_did_you_hear_about_us,
-        "Message": Message,
-        "Reference_image": Reference_image
-    }
+        file = request.files["Reference_image"]
+        if file.filename == "":
+            return jsonify({"message": "No selected file"}), 400
 
-    appointment_collection.insert_one(appoinment_data)
-    return jsonify({"message": "Appoinment created successfully"}), 201
+        file_content = file.read()
+
+        # Determine the image type
+        image_type = imghdr.what(None, file_content)  # Use imghdr to determine the type
+        if not image_type:
+            return jsonify({"message": "Invalid image file"}), 400
+
+        Reference_image = base64.b64encode(file_content).decode("utf-8")
+
+        appoinment_data = {
+            "Client_name": Client_name,
+            "Mobile_no": Mobile_no,
+            "Email_address": Email_address,
+            "Date": Date,
+            "Time_slot": Time_slot,
+            "How_did_you_hear_about_us": How_did_you_hear_about_us,
+            "Message": Message,
+            "Reference_image": Reference_image,
+            "image_type": image_type  # Store the image type
+        }
+
+        appointment_collection.insert_one(appoinment_data)
+        return jsonify({"message": "Appointment created successfully"}), 201
+
+    except Exception as e:
+        return jsonify({"message": "Error creating appointment", "error": str(e)}), 500
 
 
 @app.route("/api/admin/appoinment", methods=["GET"])
 def admin_appoinment_get():
     try:
-        appoinments = list(appointment_collection.find())
-        # Convert ObjectId to string for JSON serialization
-        for appoinment in appoinments:
-            appoinment['_id'] = str(appoinment['_id'])
-        return jsonify(appoinments), 200
+        appointments = list(appointment_collection.find({}))
+        result = []
+
+        for appointment in appointments:
+            # Construct the Data URI using the stored image type
+            image_type = appointment.get("image_type", "png")  # Default to png if missing
+            image_data = appointment.get("Reference_image", "")
+            data_uri = f"data:image/{image_type};base64,{image_data}"
+
+            result.append({
+                "_id": str(appointment["_id"]),
+                "Client_name": appointment.get("Client_name", ""),
+                "Mobile_no": appointment.get("Mobile_no", ""),
+                "Email_address": appointment.get("Email_address", ""),
+                "Date": appointment.get("Date", ""),
+                "Time_slot": appointment.get("Time_slot", ""),
+                "How_did_you_hear_about_us": appointment.get("How_did_you_hear_about_us", ""),
+                "Message": appointment.get("Message", ""),
+                "Reference_image": data_uri  # Use the constructed Data URI
+            })
+
+        return jsonify(result), 200
     except Exception as e:
         return jsonify({"message": "Error fetching appointments", "error": str(e)}), 500
 
